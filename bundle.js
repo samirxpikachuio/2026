@@ -29476,6 +29476,7 @@ class SoundManager {
         this.bgMusic = null;
         this.isMuted = false;
         this.volume = 0.3;
+        this.isUnlocked = false;
         Object.entries(SOUNDS).forEach(([key, url]) => {
             const audio = new Audio(url);
             audio.preload = 'auto';
@@ -29484,6 +29485,43 @@ class SoundManager {
         this.bgMusic = new Audio(BG_MUSIC_URL);
         this.bgMusic.loop = true;
         this.bgMusic.volume = this.volume;
+        this.setupUnlocker();
+    }
+    setupUnlocker() {
+        const unlockAudioContext = () => {
+            if (this.isUnlocked) {
+                return;
+            }
+            // A tiny silent audio file to unlock the audio context.
+            // This is the most cross-browser compatible way.
+            const silentAudio = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=');
+            silentAudio.volume = 0;
+            const playPromise = silentAudio.play();
+            if (playPromise !== undefined) {
+                playPromise.then(() => {
+                    this.isUnlocked = true;
+                    console.log("Audio context unlocked by user gesture.");
+                    // Clean up listeners
+                    events.forEach(e => window.removeEventListener(e, unlockAudioContext, { capture: true }));
+                    // Now that audio is unlocked, try to play bg music if it was supposed to be playing
+                    if (this.bgMusic && !this.isMuted && this.bgMusic.paused) {
+                        this.startBgMusic();
+                    }
+                }).catch(e => {
+                    console.error("Audio unlock play() failed:", e);
+                });
+            }
+            else {
+                // For older browsers that don't return a promise
+                this.isUnlocked = true;
+                console.log("Audio context unlocked (no promise).");
+                events.forEach(e => window.removeEventListener(e, unlockAudioContext, { capture: true }));
+            }
+        };
+        const events = ['touchstart', 'pointerdown', 'mousedown', 'keydown'];
+        events.forEach(e => {
+            window.addEventListener(e, unlockAudioContext, { once: true, capture: true });
+        });
     }
     play(name) {
         if (this.isMuted)
@@ -29493,13 +29531,26 @@ class SoundManager {
             const clone = audio.cloneNode();
             // Reduced volume for a more "low sound" feel as requested
             clone.volume = 0.2;
-            clone.play().catch(() => { });
+            clone.play().catch(() => {
+            });
         }
     }
     startBgMusic() {
-        if (!this.bgMusic || this.isMuted)
+        console.log("Attempting to start background music...");
+        if (!this.bgMusic || this.isMuted) {
+            console.log("Music not started: bgMusic=" + !!this.bgMusic + ", isMuted=" + this.isMuted);
             return;
-        this.bgMusic.play().catch(() => { });
+        }
+        if (!this.isUnlocked) {
+            console.log("Audio not unlocked yet. Music will start after user interaction.");
+            return;
+        }
+        if (this.bgMusic.paused) {
+            this.bgMusic.volume = this.volume;
+            this.bgMusic.play()
+                .then(() => console.log("Background music playing successfully"))
+                .catch((e) => console.error("Background music failed to play:", e));
+        }
     }
     toggleMute() {
         this.isMuted = !this.isMuted;
@@ -29507,8 +29558,9 @@ class SoundManager {
             if (this.isMuted) {
                 this.bgMusic.pause();
             }
-            else {
-                this.bgMusic.play().catch(() => { });
+            else if (this.isUnlocked) {
+                this.bgMusic.play().catch(() => {
+                });
             }
         }
         return this.isMuted;
@@ -29517,7 +29569,8 @@ class SoundManager {
         return this.isMuted;
     }
 }
-const soundManager = new SoundManager();
+window.soundManager = new SoundManager();
+const soundManager = window.soundManager;
 
 ;// ./node_modules/framer-motion/dist/es/animation/hooks/animation-controls.mjs
 
@@ -29800,6 +29853,14 @@ const Heart = createLucideIcon("heart", __iconNode);
 
 //# sourceMappingURL=heart.js.map
 
+;// ./node_modules/lucide-react/dist/esm/icons/lock-keyhole.js
+const lock_keyhole_iconNode = [
+  ["circle", { cx: "12", cy: "16", r: "1", key: "1au08c" }],
+  ["rect", { x: "3", y: "10", width: "18", height: "12", rx: "2", key: "13a2op" }],
+  ["path", { d: "M7 10V7a5 5 0 0 1 9.33-2.5", key: "1b3v2h" }]
+];
+const LockKeyhole = createLucideIcon("lock-keyhole", lock_keyhole_iconNode);
+
 ;// ./components/HoldStep.tsx
 
 
@@ -29809,9 +29870,14 @@ const Heart = createLucideIcon("heart", __iconNode);
 const HoldStep = ({ onComplete }) => {
     const [progress, setProgress] = (0,react.useState)(0);
     const [isHolding, setIsHolding] = (0,react.useState)(false);
+    const [isHeartUnlocked, setIsHeartUnlocked] = (0,react.useState)(false);
     const timerRef = (0,react.useRef)(null);
     const controls = useAnimation();
     const HOLD_DURATION = 1800;
+    const handleUnlock = () => {
+        soundManager.startBgMusic();
+        setIsHeartUnlocked(true);
+    };
     const startHolding = () => {
         setIsHolding(true);
         const startTime = Date.now();
@@ -29838,7 +29904,8 @@ const HoldStep = ({ onComplete }) => {
     // 2 * PI * R where R is 42 (radius in viewBox units)
     // 2 * 3.14159 * 42 ≈ 263.89
     const circumference = 2 * Math.PI * 42;
-    return ((0,jsx_runtime.jsxs)("div", { className: "flex flex-col items-center justify-center space-y-12 p-10 bg-white/5 backdrop-blur-2xl rounded-[3rem] border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.5)]", children: [(0,jsx_runtime.jsxs)("div", { className: "text-center space-y-3", children: [(0,jsx_runtime.jsx)(motion.h1, { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 }, className: "text-4xl font-bold tracking-tight text-white", children: "Hey my love..." }), (0,jsx_runtime.jsx)(motion.p, { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 }, transition: { delay: 0.2 }, className: "text-white/50 font-medium text-lg px-4", children: "I have a little surprise waiting for you." })] }), (0,jsx_runtime.jsxs)("div", { className: "relative w-48 h-48 flex items-center justify-center", children: [(0,jsx_runtime.jsx)(AnimatePresence, { children: isHolding && ((0,jsx_runtime.jsx)(motion.div, { initial: { scale: 1, opacity: 0 }, animate: { scale: 1.6, opacity: 0.3 }, exit: { scale: 1, opacity: 0 }, className: "absolute inset-0 bg-pink-500 rounded-full blur-3xl" })) }), (0,jsx_runtime.jsxs)("svg", { viewBox: "0 0 100 100", className: "absolute inset-0 w-full h-full -rotate-90 pointer-events-none", children: [(0,jsx_runtime.jsx)("circle", { cx: "50", cy: "50", r: "42", fill: "transparent", stroke: "rgba(255,255,255,0.05)", strokeWidth: "4" }), (0,jsx_runtime.jsx)(motion.circle, { cx: "50", cy: "50", r: "42", fill: "transparent", stroke: "#ec4899", strokeWidth: "4", strokeDasharray: circumference, strokeDashoffset: circumference - (circumference * progress), strokeLinecap: "round", style: { filter: 'drop-shadow(0 0 8px #ec4899)' } })] }), (0,jsx_runtime.jsx)(motion.button, { onPointerDown: startHolding, onPointerUp: stopHolding, onPointerLeave: stopHolding, animate: controls, whileHover: { scale: 1.05 }, className: "relative z-10 w-28 h-28 bg-gradient-to-br from-pink-500 to-rose-600 rounded-full flex items-center justify-center shadow-2xl cursor-pointer touch-none", children: (0,jsx_runtime.jsx)(Heart, { className: `w-12 h-12 text-white fill-current transition-transform duration-300 ${isHolding ? 'scale-125' : ''}` }) })] }), (0,jsx_runtime.jsx)("div", { className: "text-center", children: (0,jsx_runtime.jsx)("p", { className: "text-white/30 text-[10px] font-bold uppercase tracking-[0.4em] animate-pulse", children: "Hold my heart to unlock" }) })] }));
+    return ((0,jsx_runtime.jsxs)("div", { className: "flex flex-col items-center justify-center space-y-12 p-10 bg-white/5 backdrop-blur-2xl rounded-[3rem] border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.5)]", children: [(0,jsx_runtime.jsxs)("div", { className: "text-center space-y-3", children: [(0,jsx_runtime.jsx)(motion.h1, { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 }, className: "text-4xl font-bold tracking-tight text-white", children: "Hey my love..." }), (0,jsx_runtime.jsx)(motion.p, { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 }, transition: { delay: 0.2 }, className: "text-white/50 font-medium text-lg px-4", children: "I have a little surprise waiting for you." })] }), (0,jsx_runtime.jsxs)("div", { className: "relative w-48 h-48 flex items-center justify-center", children: [(0,jsx_runtime.jsx)(AnimatePresence, { children: !isHeartUnlocked &&
+                    ((0,jsx_runtime.jsx)(motion.div, { initial: { opacity: 0, scale: 0.5 }, animate: { opacity: 1, scale: 1 }, exit: { opacity: 0, scale: 0.5 }, onClick: handleUnlock, className: "absolute inset-0 z-20 bg-black/50 backdrop-blur-sm rounded-full flex items-center justify-center cursor-pointer", children: (0,jsx_runtime.jsx)(LockKeyhole, { className: "w-16 h-16 text-white/50" }) })) }), (0,jsx_runtime.jsx)(AnimatePresence, { children: isHolding && ((0,jsx_runtime.jsx)(motion.div, { initial: { scale: 1, opacity: 0 }, animate: { scale: 1.6, opacity: 0.3 }, exit: { scale: 1, opacity: 0 }, className: "absolute inset-0 bg-pink-500 rounded-full blur-3xl" })) }), (0,jsx_runtime.jsxs)("svg", { viewBox: "0 0 100 100", className: "absolute inset-0 w-full h-full -rotate-90 pointer-events-none", children: [(0,jsx_runtime.jsx)("circle", { cx: "50", cy: "50", r: "42", fill: "transparent", stroke: "rgba(255,255,255,0.05)", strokeWidth: "4" }), (0,jsx_runtime.jsx)(motion.circle, { cx: "50", cy: "50", r: "42", fill: "transparent", stroke: "#ec4899", strokeWidth: "4", strokeDasharray: circumference, strokeDashoffset: circumference - (circumference * progress), strokeLinecap: "round", style: { filter: 'drop-shadow(0 0 8px #ec4899)' } })] }), (0,jsx_runtime.jsx)(motion.button, { onPointerDown: startHolding, onPointerUp: stopHolding, onPointerLeave: stopHolding, animate: controls, whileHover: { scale: isHeartUnlocked ? 1.05 : 1 }, className: "relative z-10 w-28 h-28 bg-gradient-to-br from-pink-500 to-rose-600 rounded-full flex items-center justify-center shadow-2xl cursor-pointer touch-none", style: { pointerEvents: isHeartUnlocked ? 'auto' : 'none' }, children: (0,jsx_runtime.jsx)(Heart, { className: `w-12 h-12 text-white fill-current transition-transform duration-300 ${isHolding ? 'scale-125' : ''}` }) })] }), (0,jsx_runtime.jsx)("div", { className: "text-center", children: (0,jsx_runtime.jsx)("p", { className: "text-white/30 text-[10px] font-bold uppercase tracking-[0.4em] animate-pulse", children: isHeartUnlocked ? "Hold my heart to unlock" : "Click to begin" }) })] }));
 };
 /* harmony default export */ const components_HoldStep = (HoldStep);
 
@@ -31188,23 +31255,13 @@ const PRELOAD_IMAGES = [
 const App = () => {
     const [currentStep, setCurrentStep] = (0,react.useState)(Step.HOLD);
     (0,react.useEffect)(() => {
-        // Start background music listener
-        const startMusic = () => {
-            soundManager.startBgMusic();
-            window.removeEventListener('click', startMusic);
-            window.removeEventListener('touchstart', startMusic);
-        };
-        window.addEventListener('click', startMusic);
-        window.addEventListener('touchstart', startMusic);
         // Pre-load all critical images
         PRELOAD_IMAGES.forEach(url => {
             const img = new Image();
             img.src = url;
         });
-        return () => {
-            window.removeEventListener('click', startMusic);
-            window.removeEventListener('touchstart', startMusic);
-        };
+        // The new SoundManager handles its own audio unlocking.
+        // The first user interaction on HoldStep will trigger the music.
     }, []);
     const nextStep = (0,react.useCallback)(() => {
         setCurrentStep((prev) => {
